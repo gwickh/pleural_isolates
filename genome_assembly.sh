@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #author:        :Gregory Wickham
 #date:          :20250324
-#version        :1.0
-#date modified: :20250324
+#version        :1.1
+#date modified: :20250326
 #desc           :Various tools for assembling genomes
 #usage		    :bash genome_assembly.sh
 #========================================================================================================
@@ -56,20 +56,62 @@ mkdir alignment_files
 for k in trimmed_paired/*_R1_*_trim.fastq.gz; do
     filename=$(basename "$k")
     base=${filename%%_R1_*_trim.fastq.gz}
+    if [ -e alignment_files/${base}_alignment/${base}.bam.bai ]; then
+        echo "alignment_files/${base}_alignment/${base}.bam already exists"
+    else
+        echo "alignment_files/${base}_alignment/${base}.sam does not exist"
+        mkdir alignment_files/${base}_alignment
 
-    mkdir alignment_files/${base}_alignment
-    bowtie2-build \
-        assemblies/${base}_assembly/contigs.fa \
-        alignment_files/${base}_alignment/${base}_alignment_index
+        bowtie2-build \
+            assemblies/${base}_assembly/contigs.fa \
+            alignment_files/${base}_alignment/${base}_alignment_index
 
-    bowtie2 \
-        -x alignment_files/${base}_alignment/${base}_alignment_index \
-        -1 $k \
-        -2 $(ls trimmed_paired/${base}_R2_*_trim.fastq.gz) \
-        -S alignment_files/${base}_alignment/${base}.sam \
-            | samtools sort -o ${base}.bam
-    
-    samtools index ${base}.bam
+        bowtie2 \
+            -x alignment_files/${base}_alignment/${base}_alignment_index \
+            -1 $k \
+            -2 $(ls trimmed_paired/${base}_R2_*_trim.fastq.gz) \
+            -S alignment_files/${base}_alignment/${base}.sam
+        
+        samtools sort \
+            alignment_files/${base}_alignment/${base}.sam \
+            -o alignment_files/${base}_alignment/${base}.bam
+
+        samtools index ${base}.bam
+    fi
+done
+
+
+# Calculate contig depth
+for k in alignment_files/*/*.bam; do 
+    jgi_summarize_bam_contig_depths \
+        --outputDepth $(dirname $k)/depth.txt \
+        $k
+done
+
+# Bin genomes with metabat2
+mkdir genome_bins
+
+for k in assemblies/*/*filtered.fasta; do
+    dname=$(dirname $k)                             
+    prefix=$(basename $dname)                       
+    baseprefix=${prefix%%_assembly}              
+
+    metabat2 \
+        -a alignment_files/${baseprefix}_alignment/depth.txt \
+        -i $k \
+        -o genome_bins/${baseprefix}_binned \
+        --minCV 0.5 \
+        --minContig 1500
+done
+
+# Check genome bins with checkM
+mkdir checkm_reports
+
+for k in genome_bins/*.fa; do
+    checkm2 predict \
+        --threads 8 \
+        --input $k \
+        --output-directory checkm_reports/$(basename $k)
 done
 
 # Annotate genome with bakta
