@@ -9,7 +9,7 @@
 
 source "$(sudo find ~ -maxdepth 4 -name conda.sh)" #find path to conda base environment
 conda create -y -n genome_assembly -c bioconda -c conda-forge \
-        trimmomatic shovill bowtie2 samtools bakta quast fastqc multiqc
+        trimmomatic shovill bowtie2 samtools bakta quast fastqc multiqc checkm2 metabat2
 conda activate genome_assembly
 
 # Trim reads with trimmomatic
@@ -104,19 +104,46 @@ for k in assemblies/*/*filtered.fasta; do
         --minContig 1500
 done
 
+# Rename .1.fa files to .fa if .2.fa doesn't exist
+for f in *.fa; do
+    if [[ "$f" =~ ^(.+)\.([0-9]+)\.fa$ ]]; then 
+        base="${BASH_REMATCH[1]}"     
+        num="${BASH_REMATCH[2]}";   
+    else     
+        base="${f%.fa}";
+        num=""
+    fi
+  # Proceed only if this is a ".1.fa" file
+  if [[ "$num" == "1" ]]; then
+    paired="${base}.2.fa"
+    if [[ ! -f "$paired" ]]; then
+    #   mv "$f" "${base}.fa"
+      echo "Renamed $f → ${base}.fa"
+    fi
+  fi
+done
+
 # Check genome bins with checkM
 mkdir checkm_reports
 
-for k in genome_bins/*.fa; do
-    checkm2 predict \
-        --threads 8 \
-        --input $k \
-        --output-directory checkm_reports/$(basename $k)
+for k in genome_bins/*binned.fa; do
+    if [ -e checkm_reports/$(basename $k)/checkm2.log ]; then
+        echo "checkm_reports/$(basename $k)/checkm2.log already exists"
+    else
+        echo "running checkm on $k"
+        checkm2 predict \
+            --threads 8 \
+            --input $k \
+            --output-directory checkm_reports/$(basename $k)
+    fi
 done
 
-# Annotate genome with bakta
-conda activate bakta
+(head -n 1 $(ls */*.tsv | head -n 1) 
+for f in */*.tsv; do 
+    sed -n '2p' "$f"; done
+) > combined.tsv
 
+# Annotate genome with bakta
 for k in assemblies/*/contigs.fa; do
     bakta \
         --db /home/ubuntu/webber_group/Gregory_Wickham/plueral_isolates/assemblies/db \
