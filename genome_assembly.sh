@@ -9,7 +9,7 @@
 
 source "$(sudo find ~ -maxdepth 4 -name conda.sh)" #find path to conda base environment
 conda create -y -n genome_assembly -c bioconda -c conda-forge \
-        trimmomatic shovill bowtie2 samtools bakta quast fastqc multiqc checkm2 metabat2
+        trimmomatic shovill bowtie2 samtools bakta quast fastqc multiqc checkm2 metabat2 abricate amrfinderplus
 conda activate genome_assembly
 
 # Trim reads with trimmomatic
@@ -143,11 +143,55 @@ for f in */*.tsv; do
     sed -n '2p' "$f"; done
 ) > combined.tsv
 
+# Run AMRFinderplus
+for k in genome_bins/*.fa; do
+    amrfinder \
+        -n $k \
+        -o amrfinderplus/$(basename $k .fa)_amrfinderplus.tsv \
+        --threads 8
+done
+
+# Run abricate
+for k in genome_bins/*binned.fa; do
+    filename=$(basename "$k")
+    base=${filename%%_binned.fa}
+    for j in {megares,vfdb,resfinder,card,argannot,plasmidfinder}; do
+        if [ ! -f abricate/$j ]; then
+            echo "making abricate/$j..."
+            mkdir -p abricate/$j
+        fi
+        abricate \
+            --db $j \
+            --threads 8 \
+            $k > abricate/$j/${base}_abricate_${j}.tsv
+    done
+done
+
+for k in {megares,vfdbresfinder,card,argannot,plasmidfinder}; do
+    cat abricate/$k/*.tsv > abricate/combined_${k}.tsv;
+done
+
 # Annotate genome with bakta
 for k in assemblies/*/contigs.fa; do
     bakta \
         --db /home/ubuntu/webber_group/Gregory_Wickham/plueral_isolates/assemblies/db \
-        -1 $k \
+        $k \
         -o bakta_assembly/${base}_assembly.fasta \
         -t 8
 done
+
+# run refseq-masher
+mkdir refseq_masher
+for k in genome_bins/*.fa; do
+    base=$(basename "$k" .fa)
+    refseq_masher matches \
+        $k \
+        --output-type tab \
+        -o refseq_masher/${base}_refseq_masher.tsv
+done
+
+# concatentate refseq-masher reports
+(head -n 1 $(ls refseq_masher/*.tsv | head -n 1) 
+for f in refseq_masher/*.tsv; do 
+    sed -n '2p' "$f"; done
+) > refseq_masher/combined.tsv
