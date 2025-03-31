@@ -143,14 +143,6 @@ for f in */*.tsv; do
     sed -n '2p' "$f"; done
 ) > combined.tsv
 
-# Run AMRFinderplus
-for k in genome_bins/*.fa; do
-    amrfinder \
-        -n $k \
-        -o amrfinderplus/$(basename $k .fa)_amrfinderplus.tsv \
-        --threads 8
-done
-
 # Run abricate
 for k in genome_bins/*binned.fa; do
     filename=$(basename "$k")
@@ -200,3 +192,55 @@ done
 for f in refseq_masher/*.tsv; do 
     sed -n '2p' "$f"; done
 ) > refseq_masher/combined.tsv
+
+# clean up bakta gff3 files
+for k in bakta/*/*binned.gff3; do
+    dir=$(dirname "$k")
+    base=$(basename "$k" .gff3)
+
+    awk '$0 ~ /^##FASTA/ {exit} {print}' "$k" | \
+    awk -F'\t' 'BEGIN { OFS="\t" }
+    {
+        if ($3 == "CDS" && $9 ~ /ID=/) {
+            # Extract ID value
+            match($9, /ID=([^;]+)/, id)
+            id_val = id[1]
+
+            # Split attributes and rebuild without ID and Name
+            split($9, fields, ";")
+            new_fields = ""
+            for (i in fields) {
+                if (fields[i] ~ /^ID=/ || fields[i] ~ /^Name=/) continue
+                if (new_fields == "") {
+                    new_fields = fields[i]
+                } else if (fields[i] != "") {
+                    new_fields = new_fields ";" fields[i]
+                }
+            }
+
+            # Add new Name and optional Parent
+            $9 = "Name=" id_val
+            if (new_fields != "") {
+                $9 = $9 ";" new_fields
+            }
+            if ($9 !~ /Parent=/ && id_val != "") {
+                $9 = $9 ";Parent=" id_val
+            }
+        }
+        print 
+    }' > "$dir/${base}_cleaned.gff3"
+
+    echo "✔️ Cleaned and renamed ID→Name: $dir/${base}_cleaned.gff3"
+done
+   
+
+# Run AMRFinderplus
+for k in bakta/*/*binned.faa; do
+    amrfinder \
+        -p $k \
+        -n bakta/$(basename $k .faa)/$(basename $k .faa).fna \
+        -g bakta/$(basename $k .faa)/$(basename $k .faa)_cleaned.gff3 \
+        -o amrfinderplus/$(basename $k .faa)_amrfinderplus.tsv \
+        --plus \
+        --threads 8
+done
