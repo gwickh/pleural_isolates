@@ -167,8 +167,13 @@ for k in genome_bins/*binned.fa; do
     done
 done
 
-for k in {megares,vfdbresfinder,card,argannot,plasmidfinder}; do
-    cat abricate/$k/*.tsv > abricate/combined_${k}.tsv;
+for k in abricate/*; do
+    {
+        head -n 1 "$(ls $k/*.tsv | head -n 1)"
+        for f in $k/*.tsv; do
+            tail -n +2 "$f"
+        done
+    } > ${k}_combined.tsv
 done
 
 # Annotate genome with bakta
