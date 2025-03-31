@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #author:        :Gregory Wickham
-#date:          :20250324
-#version        :1.1
+#date:          :20250331
+#version        :1.2
 #date modified: :20250326
 #desc           :Various tools for assembling genomes
 #usage		    :bash genome_assembly.sh
@@ -79,7 +79,6 @@ for k in trimmed_paired/*_R1_*_trim.fastq.gz; do
         samtools index ${base}.bam
     fi
 done
-
 
 # Calculate contig depth
 for k in alignment_files/*/*.bam; do 
@@ -235,6 +234,8 @@ done
    
 
 # Run AMRFinderplus
+mkdir amrfinderplus
+
 for k in bakta/*/*binned.faa; do
     amrfinder \
         -p $k \
@@ -244,3 +245,9 @@ for k in bakta/*/*binned.faa; do
         --plus \
         --threads 8
 done
+
+(head -n 1 $(ls amrfinderplus/*amrfinderplus.tsv | head -n 1) 
+for f in amrfinderplus/*amrfinderplus.tsv; do 
+        tail -n +2 "$f"
+done
+) > amrfinderplus*amrfinderplus_combined.tsv
